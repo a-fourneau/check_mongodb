@@ -179,6 +179,32 @@ check_rs_status() {
     fi
 }
 
+check_rs_status_expect() {
+    is_rs               # mandatory, rs.status() is specific to replicaset
+    is_auth_given
+    is_port
+
+    if [ -z "${EXPECT}" ]
+    then
+        echo "NOK - expect no defined"
+        return ${STATE_CRITICAL}
+    fi
+
+    mongo_query "rs.status().myState"
+    debug_msg "value of myState: ${OUTPUT}"
+
+    MY_STATE=${CMD_OUTPUT}
+
+    if [ ${MY_STATE} -eq ${EXPECT} ]
+    then
+        echo "OK - State is ${MONGO_STATUS[${MY_STATE}]}, expected ${MONGO_STATUS[${EXPECT}]}"
+        return ${STATE_OK}
+    else
+        echo "NOK - State is ${MONGO_STATUS[${MY_STATE}]}, expected ${MONGO_STATUS[${EXPECT}]}"
+        return ${STATE_CRITICAL}
+    fi
+}
+
 # execute a command in mongo shell, pass through an argument
 # ${CMD_OUTPUT} is set in the function
 mongo_query() {
@@ -215,14 +241,16 @@ usage() {
     # not implemented yet :)
     #echo "-i [!warning!critical]"
     echo "-v verbose"
+    echo "-e expect"
     echo
     echo "Any rs.xxx command has to be associated with -t replicaset"
     echo
     echo "check_name :"
-    echo "mem.resident  Check resident memory usage (amount of physical memory being used, only for MMAPv1 storage engine)"
-    echo "rs.status     Status of the local node"
-    echo "rs.count      Count how many member are in the replicaset"
-    echo "rs.lag        Check replication lag"
+    echo "mem.resident      Check resident memory usage (amount of physical memory being used, only for MMAPv1 storage engine)"
+    echo "rs.status         Status of the local node"
+    echo "rs.count          Count how many member are in the replicaset"
+    echo "rs.lag            Check replication lag"
+    echo "rs.status.expect  Check the status of the local node is as expected (-e)"
 }
 
 # entrypoint
@@ -233,9 +261,12 @@ then
     exit ${STATE_DEPENDENT}
 fi
 
-while getopts 't:h:u:p:c:vw:' OPTIONS
+while getopts 'e:t:h:u:p:c:vw:' OPTIONS
 do
     case ${OPTIONS} in
+        e)
+            EXPECT=${OPTARG}
+            ;;
         t)
             TYPE=${OPTARG}
             ;;
@@ -287,6 +318,9 @@ case ${CHECK_NAME} in
         ;;
     "rs.lag")
         check_rs_lag
+        ;;
+    "rs.status.expect")
+        check_rs_status_expect
         ;;
     *)
         echo "Invalid check '${CHECK_NAME}'."
